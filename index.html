@@ -511,6 +511,15 @@
                 document.getElementById('sandbox').style.height = j.data + 'px';
                 return;
             }
+
+            // type ::= resize | status | reconnect | directory | rpc | load
+            // resize     -  height of sandbox has changed
+            // status     -  connection status, how many nodes are connected to the guid of the contract and the
+            //               node's public keys
+            // reconnect  -  ask for a fresh connection to the same contract we are already on
+            // directory  -  load the directory contract
+            // load       -  load a specified contract (if not initiated by directory contract then via warning)
+
         },false);
 
         function reset_sandbox(html)
