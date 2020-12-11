@@ -24,7 +24,7 @@
         }
 
         div#topbarflex> * {
-            background:  rgb(241 243 255 / 1);
+            background:  #f1f3ff;
             padding: 0.5em;
             padding-left: 1em;
             border: none;
@@ -39,7 +39,7 @@
 
         div#topbarflex> *:first-of-type {
             margin-left:0.5em;
-            background:hsl(133 100% 90% / 1);
+            background: #f1f3ff;
             border-radius: 1em 0em 0em 1em;
             flex-grow: 2;
         }
@@ -71,11 +71,11 @@
             padding-bottom: 0em;
             padding-top: 0em;
             border: none;
-            width: 100vw; 
+            width: 100vw;
             min-height: calc(100vh - 4em);
         }
 
-        
+
 
     </style>
 
@@ -94,8 +94,8 @@
             }
 
             if (typeof(window.user_keys) == 'undefined')
-                window.user_keys = await HotPocket.generateKeys(); 
-               
+                window.user_keys = await HotPocket.generateKeys();
+
 
             if (typeof(contract_keys.length) != 'number' || contract_keys.length < 1)
             {
@@ -112,25 +112,37 @@
             window.contract_id = contract_id;
             window.contract_keys = contract_keys;
             window.contract_peers = contract_peers;
-            
+
             if (window.hpc)
                 hpc.close();
 
+            let is_directory = false;
+            if (contract_id == window.directory_contract.id)
+            {
+                is_directory = true;
+                contract_peers = window.directory_contract.peers;
+                contract_keys = window.directory_contract.keys;
+            }
+
             topbarhtml =
-                '<div id="evernodeurl">evernode://' + contract_id + '</div>';
+                '<div id="evernodeurl" style="background: '+(is_directory ? '#ccffe8' : '#fff6cc' ) + 
+                '">evernode://' + contract_id + '</div>';
 
             for (let i = 0; i < contract_peers.length; ++i)
                 topbarhtml += '<div class="evernodepeer">' + contract_peers[i] + '</div>';
-        
+
             document.getElementById('topbarflex').innerHTML = topbarhtml;
-            
-            window.hpc = await HotPocket.createClient(contract_peers, user_keys);
+
+            window.hpc = await HotPocket.createClient(contract_peers, user_keys, {
+                contractId: contract_id,
+                validServerKeys: contract_keys
+            });
 
             if (!await hpc.connect()) {
                 console.log('connect_to_contract: connection failed.');
                 return false;
             }
-            
+
             console.log('connect_to_contract: hotpocket connected.');
 
             // Simple connection to single server without any validations.
@@ -166,19 +178,6 @@
                 console.log(server + " " + action);
             })
 
-            // This will get fired when contract sends an output.
-            hpc.on(HotPocket.events.contractOutput, (output) => {
-                console.log("Contract output>> " + output);
-            })
-
-
-            if (typeof(window.jsonrpc_nonce) == "undefined")
-                window.jsonrpc_nonce = 0;
-
-
-            // When we need to close HP connection:
-            // await hpc.close();
-
         }
 
 
@@ -191,11 +190,16 @@
         };
 
 
-
+        window.directory_contract =
+        {
+            id: "87bb9148-0e7f-4896-985e-fa8aee641e03",
+            keys: ["ed4f9b1f7b787d4bda65cd33b3554f5acdf710e1a773815464398511321f0775ed"],
+            peers: ["wss://eve.evernode.org"]
+        };
 
         function interframe_wrap(obj)
         {
-            
+
             if (!window.sodium || window.sodium.ready === false)
             {
                 console.log('interframe_wrap: sodium not ready.');
@@ -206,11 +210,14 @@
                 content: obj,
                 nonce: ++window.our_nonce
             };
+
             let outer = {
                 payload: JSON.stringify(inner)
             };
-            outer.hash = sodium.crypto_generichash(16, sodium.from_string(outer.payload),
-                                                    window.evernode_cookie, 'hex');
+
+            outer.hash =
+                sodium.crypto_generichash(16, sodium.from_string(outer.payload), window.evernode_cookie, 'hex');
+
             return JSON.stringify(outer);
         }
 
@@ -252,8 +259,8 @@
                 console.log('interframe_unwrap: message has an old or reused nonce (replay attack).');
                 return false;
             }
-        
-            window.other_nonce = inner.nonce;            
+
+            window.other_nonce = inner.nonce;
 
             return inner.content;
         }
@@ -270,8 +277,98 @@
             return document.getElementById('sandbox').contentWindow.postMessage(m, '*');
         }
 
-        window.addEventListener("message", (event) =>
+        // RH TODO rpc should route multiple requests through multiple peers
+        // RH TODO other than for read requests some sort of UNL proof of validation should be provided by connected peers
+        function rpc(method, params)
         {
+
+            let in_sandbox = window.origin == 'null';
+
+            if (!in_sandbox && typeof(window.hpc) == 'undefined')
+            {
+                console.log("rpc: not connected to a contract");
+                return false;
+            }
+
+            if (typeof(window.pending_rpc) == 'undefined')
+            {
+                window.pending_rpc = {};
+
+                let response_handler = (response) => {
+
+                    if (!('jsonrpc' in response) || response['jsonrpc'] != '2.0' || !('id' in response))
+                        return console.log("received non-jsonrpc response from contract");
+
+                    if (!(response.id in window.pending_rpc))
+                        return console.log("received invalid response id from contract " + response.id);
+
+                    let promise = window.pending_rpc[response.id];
+                    delete window.pending_rpc[response.id];
+
+                    if ('error' in response)
+                        return promise.reject(response.error);
+
+                    if (!('result' in response))
+                        return console.log("received invalid response from contract (no result field)");
+
+                    promise.resolve(response.result);
+                };
+
+                if (in_sandbox)
+                    window.rpc_response_handler = response_handler;
+                else
+                {
+                    hpc.on(HotPocket.events.contractReadResponse, response_handler);
+                    hpc.on(HotPocket.events.contractOutput, response_handler);
+                }
+            }
+
+            if (typeof(window.jsonrpc_nonce) == 'undefined')
+                window.jsonrpc_nonce = 0;
+
+            let request_id = ++window.jsonrpc_nonce;
+
+            let request = {
+                jsonrpc: "2.0",
+                method: method,
+                id: request_id
+            };
+
+            if (typeof(params) != 'undefined')
+                request['params'] = params;
+
+            request = JSON.stringify(request);
+
+            let retval = new Promise((resolve, reject) => {
+                window.pending_rpc[request_id] = { resolve: resolve, reject: reject };
+                setTimeout(()=> {
+                    if (window.pending_rpc[request_id])
+                        reject(JSON.stringify({code: -32003, message: "RPC timeout"}));
+                }, 10000);
+            });
+
+            if (in_sandbox)
+                interframe_send({type: 'rpc', data: request})
+            else
+            {
+                if (method.match(/^info_/))
+                    hpc.sendContractReadRequest(request)
+                else
+                    hpc.sendContractInput(request);
+            }
+            return retval;
+        }
+        function interframe_message_handler(event)
+        {
+
+            let in_sandbox = window.origin == 'null';
+
+            if (in_sandbox && typeof(window.rpc_response_handler) == 'undefined')
+            {
+                console.log("sandbox_onmessage: could not find rpc handler");
+                return false;
+            }
+        
             if (event.origin == window.origin)
                 return; // ignore self messages
 
@@ -279,6 +376,7 @@
             if (j === false)
                 return; // invalid message
 
+            // api:
             // type ::= resize | status | reconnect | directory | rpc | load
             // resize     -  height of sandbox has changed
             // status     -  connection status, how many nodes are connected to the guid of the contract and the
@@ -296,35 +394,98 @@
 
             if (j.type == 'resize')
             {
+                if (in_sandbox)
+                    return console.log("interframe_message_handler: received resize message inside sandbox");
+
                 document.getElementById('sandbox').style.height = j.data + 'px';
                 return;
             }
 
             if (j.type == 'status')
             {
-                
+                if (in_sandbox) 
+                    return console.log("interframe_message_handler: received status message inside sandbox");
 
             }
 
             if (j.type == 'reconnect')
             {
-
+                if (in_sandbox) 
+                    return console.log("interframe_message_handler: received reconnect message inside sandbox");
 
             }
 
             if (j.type == 'directory')
             {
+                if (in_sandbox) 
+                    return console.log("interframe_message_handler: received directory message inside sandbox");
 
 
             }
 
             if (j.type == 'load')
             {
-
-
+                if (in_sandbox) 
+                    return console.log("interframe_message_handler: received load message inside sandbox");
             }
 
-        },false);
+            if (j.type == 'rpc')
+            {
+                if (in_sandbox) 
+                    return console.log("interframe_message_handler: received rpc message inside sandbox");
+            
+                if (!('data' in j))
+                    return console.log("interframe_message_handler: rpc request missing data field");
+        
+                j.data = JSON.parse(j.data);
+
+                if (!('id' in j.data) || !('method' in j.data))
+                    return console.log("interframe_message_handler: rpc request missing id/method");
+    
+                let resolve =
+                    result => {
+                    console.log("resolving inner rpc id: " + j.data.id);
+                    console.log(j)
+                    interframe_send({
+                        type: 'rpc_response',
+                        data: {
+                            'jsonrpc': '2.0',
+                            'result': result,
+                            'id': j.data.id
+                        }
+                    });
+                  };
+                
+                let reject =
+                    error => {
+                        interframe_send({
+                            type: 'rpc_response',
+                            data: {
+                                'jsonrpc': '2.0',
+                                'error': error,
+                                'id': j.data.id
+                            }
+                        });
+                    };
+
+                if ('params' in j.data)
+                    return rpc(j.data.method, j.data.params).then(resolve).catch(reject);
+
+                return rpc(j.data.method).then(resolve).catch(reject);
+            }
+
+            if (j.type == 'rpc_response')
+            {
+                if (!in_sandbox)
+                    return console.log("interframe_message_handler: received rpc_response message outside sandbox");
+                return window.rpc_response_handler(j.data);
+            }
+
+        }
+
+
+
+        window.addEventListener("message", interframe_message_handler, false);
 
         function reset_sandbox(html)
         {
@@ -334,33 +495,35 @@
             crypto.getRandomValues(window.evernode_cookie);
             window.our_nonce = 0;
             window.their_nonce = 0;
-
             const inject1 = "<" + "script>\r\n" +
-                            "window.evernode_cookie = new Uint8Array([" + window.evernode_cookie + "]);\r\n" + 
-                            "window.our_nonce = 0;\r\n" + 
-                            "window.their_nonce = 0;\r\n" + 
-                            interframe_wrap.toString() + ";\r\n" + 
-                            interframe_unwrap.toString() + ";\r\n" + 
-                            interframe_send.toString() + ";\r\n" + 
+                            "window.evernode_cookie = new Uint8Array([" + window.evernode_cookie + "]);\r\n" +
+                            "window.our_nonce = 0;\r\n" +
+                            "window.their_nonce = 0;\r\n" +
+                            interframe_wrap.toString() + ";\r\n" +
+                            interframe_unwrap.toString() + ";\r\n" +
+                            interframe_send.toString() + ";\r\n" +
+                            interframe_message_handler.toString() + ";\r\n" +
+                            rpc.toString() + ";\r\n" +
+                            "window.addEventListener('message', interframe_message_handler, false);\r\n" +
                             "window.sodium = {\r\n" +
                             "ready: false,\r\n"+
-                            "onload: \r\n" + 
+                            "onload: \r\n" +
                             "async function (sodium) {\r\n" +
                             "window.sodium = sodium; \r\n" +
-                            "(new ResizeObserver(entries => {\r\n" + 
+                            "(new ResizeObserver(entries => {\r\n" +
                             "console.log('resize observer fired');\r\n" +
-                            "interframe_send(\r\n" + 
-                            "{type: 'resize', data: \r\n" + 
+                            "interframe_send(\r\n" +
+                            "{type: 'resize', data: \r\n" +
                             "Math.max(document.body.scrollHeight, document.body.offsetHeight, " +
-                            "document.documentElement.clientHeight, document.documentElement.scrollHeight, " + 
+                            "document.documentElement.clientHeight, document.documentElement.scrollHeight, " +
                             "document.documentElement.offsetHeight)\r\n" +
                             "});}\r\n"+
                             ")).observe(document.documentElement);\r\n" +
                             "}};<" + "/script>\r\n";
 
-            const inject2 = '<'+'script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/' + 
+            const inject2 = '<'+'script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/' +
                             'sodium.min.js" integrity="sha512-oRfU7aik4u7f0dPAKgOyA4+bb/YRGfAaD5RA4Z3Mb2yc' +
-                            'PcGDs+k8qAnDNd7ouruoqlIHSuGVaTTlEs91Gvd37A==" crossorigin="anonymous"><'+'/script>' + 
+                            'PcGDs+k8qAnDNd7ouruoqlIHSuGVaTTlEs91Gvd37A==" crossorigin="anonymous"><'+'/script>' +
                             "\r\n";
 
             let sandbox_element = document.getElementById('sandbox');
@@ -409,82 +572,24 @@
     reset_sandbox('Loading ...');
 
 
-    function rpc(method, params)
-    {
-        if (typeof(window.hpc) == 'undefined')
-        {
-            console.log("rpc: not connected to a contract");
-            return false;
-        }
 
-        if (typeof(window.pending_rpc) == 'undefined')
-        {
-            window.pending_rpc = {};
-
-            let response_handler = (response) => {
-                
-                if (!('jsonrpc' in response) || response['jsonrpc'] != '2.0' || !('id' in response))
-                    return console.log("received non-jsonrpc response from contract");
-                
-                if (!(response.id in window.pending_rpc))
-                    return console.log("received invalid response id from contract " + response.id);
     
-                let promise = window.pending_rpc[response.id];
-                delete window.pending_rpc[response.id];
-
-                if ('error' in response)
-                    return promise.reject(response.error);
-
-                if (!('result' in response))
-                    return console.log("received invalid response from contract (no result field)");
-                
-                promise.resolve(response.result);
-            };
-
-            hpc.on(HotPocket.events.contractReadResponse, response_handler);
-            hpc.on(HotPocket.events.contractOutput, response_handler);            
-        }
-
-        let request_id = ++window.jsonrpc_nonce;
-
-        let request = {
-            jsonrpc: "2.0",
-            method: method,
-            id: request_id
-        };
-
-        if (typeof(params) != 'undefined')
-            request['params'] = params;
-        
-        request = JSON.stringify(request);
-        
-        let retval = new Promise((resolve, reject) => { 
-            window.pending_rpc[request_id] = { resolve: resolve, reject: reject };
-            setTimeout( ()=> { 
-                if (window.pending_rpc[request_id])
-                    reject(JSON.stringify({code: -32003, message: "RPC timeout"}));
-            }, 10000);
-        });
-
-        if (method.match(/^info_/))
-            hpc.sendContractReadRequest(request)
-        else
-            hpc.sendContractInput(request);
-
-        return retval;
-    }
-
-    connect_to_contract([0],[0],["wss://eve.evernode.org", "wss://invalid"]).then( ()=>
+    connect_to_contract(
+        window.directory_contract.id,
+        window.directory_contract.keys,
+        window.directory_contract.peers
+    ).then( ()=>
     {
         console.log("connected!~!");
 
         rpc('info_main').then( result => {
-            sandbox.srcdoc = result
+            reset_sandbox(result);
         }).catch(y=>{
             console.log(y);
         });
 
     })
+
 </script>
 </body>
 
