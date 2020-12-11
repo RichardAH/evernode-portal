@@ -84,7 +84,7 @@
 
     <script>
 
-        async function connect_to_contract(contract_peers, contract_keys)
+        async function connect_to_contract(contract_id, contract_keys, contract_peers)
         {
 
             if (window.sodium.ready === false)
@@ -109,12 +109,20 @@
                 return false;
             }
 
+            window.contract_id = contract_id;
             window.contract_keys = contract_keys;
             window.contract_peers = contract_peers;
             
             if (window.hpc)
                 hpc.close();
-            
+
+            topbarhtml =
+                '<div id="evernodeurl">evernode://' + contract_id + '</div>';
+
+            for (let i = 0; i < contract_peers.length; ++i)
+                topbarhtml += '<div class="evernodepeer">' + contract_peers[i] + '</div>';
+        
+            document.getElementById('topbarflex').innerHTML = topbarhtml;
             
             window.hpc = await HotPocket.createClient(contract_peers, user_keys);
 
@@ -388,10 +396,8 @@
 <div id="topbar">
     <div id="topbarflex">
         <div id="evernodeurl">
-            evernode://98167360-e721-4165-bc30-7851804d734a [directory contract]
         </div>
         <div class="evernodepeer">
-            wss://test.evernode.org
         </div>
     </div>
 </div>
@@ -419,16 +425,19 @@
                 
                 if (!('jsonrpc' in response) || response['jsonrpc'] != '2.0' || !('id' in response))
                     return console.log("received non-jsonrpc response from contract");
+                
+                if (!(response.id in window.pending_rpc))
+                    return console.log("received invalid response id from contract " + response.id);
+    
+                let promise = window.pending_rpc[response.id];
+                delete window.pending_rpc[response.id];
+
+                if ('error' in response)
+                    return promise.reject(response.error);
 
                 if (!('result' in response))
                     return console.log("received invalid response from contract (no result field)");
                 
-                if (!(response.id in window.pending_rpc))
-                    return console.log("received invalid response id from contract " + response.id);
-
-                let promise = window.pending_rpc[response.id];
-                delete window.pending_rpc[response.id];
-
                 promise.resolve(response.result);
             };
 
@@ -451,7 +460,10 @@
         
         let retval = new Promise((resolve, reject) => { 
             window.pending_rpc[request_id] = { resolve: resolve, reject: reject };
-            setTimeout( ()=>{ if(window.pending_rpc[request_id]) reject('timeout') }, 10000 );
+            setTimeout( ()=> { 
+                if (window.pending_rpc[request_id])
+                    reject(JSON.stringify({code: -32003, message: "RPC timeout"}));
+            }, 10000);
         });
 
         if (method.match(/^info_/))
@@ -462,7 +474,7 @@
         return retval;
     }
 
-    connect_to_contract(["wss://eve.evernode.org"],[0]).then( ()=>
+    connect_to_contract([0],[0],["wss://eve.evernode.org", "wss://invalid"]).then( ()=>
     {
         console.log("connected!~!");
 
