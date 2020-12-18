@@ -94,7 +94,7 @@
             }
 
             if (typeof(window.user_keys) == 'undefined')
-                window.user_keys = await HotPocket.generateKeys();
+                window.user_keys = await HotPocket.generateKeys(prompt('secret key hex'));
 
 
             if (typeof(contract_keys.length) != 'number' || contract_keys.length < 1)
@@ -295,6 +295,11 @@
                 window.pending_rpc = {};
 
                 let response_handler = (response) => {
+                    if (typeof(response) != 'object')
+                    {
+                        console.log("received invalid json response from contract");
+                        return;
+                    }
 
                     if (!('jsonrpc' in response) || response['jsonrpc'] != '2.0' || !('id' in response))
                         return console.log("received non-jsonrpc response from contract");

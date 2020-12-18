@@ -35,22 +35,12 @@
 
     /*--- Included in public interface. ---*/
     const generateKeys = async (privateKeyHex = null) => {
-
         await initSodium();
-
-        if (!privateKeyHex) {
-            const keys = sodium.crypto_sign_keypair();
-            return {
-                privateKey: keys.privateKey,
-                publicKey: keys.publicKey
-            }
-        }
-        else {
-            const binPrivateKey = hexToUint8Array(privateKeyHex);
-            return {
-                privateKey: Uint8Array.from(binPrivateKey),
-                publicKey: Uint8Array.from(binPrivateKey.slice(32))
-            }
+        const keys = ( privateKeyHex ? sodium.crypto_sign_seed_keypair(hexToUint8Array(privateKeyHex)) 
+                                     :  sodium.crypto_sign_keypair() );
+        return {
+            privateKey: keys.privateKey,
+            publicKey: keys.publicKey
         }
     }
 
