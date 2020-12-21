@@ -1,13 +1,106 @@
 <html>
 <head>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/js/all.min.js"></script>
+<!--RH TODO add checksums to these -->
+<script src="https://slowli.github.io/bech32-buffer/assets/js/bech32-buffer.min.js"></script>
     <style>
 
         body {
-            background:blue;
             overscroll-behavior: none;
             margin: 0;
             padding: 0;
+            user-select: none;
+            -moz-user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
         }
+
+        #walletbubble {
+            position: fixed;
+            z-index: 99999999999999;
+            max-width: 20em;
+            max-height: 25em;
+            width: 20em;
+            height: 25em;
+            background: white;
+            right: 2em;
+            top: 2.4em;
+            font-family: sans-serif;
+            border-radius: 0.5em 0.5em 0.5em 0.5em;
+            display: none;
+            box-shadow: 0px 1px 5px #00000042;
+        }
+
+        div#walletheader {
+            min-height: 4em;
+            border-bottom: 1px solid #f5f5f5;
+        }
+
+        div#walletaddr {
+            width: 15em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-left: 50%;
+            transform: translate(-50%);
+            margin-top: 1em;
+        }
+
+        div#walletbal {
+            width: 100%;
+            text-align: center;
+            margin-top: 0.5em;
+            font-size: 1.2em;
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        div#walletbody {
+            max-width: 20em;
+            overflow-wrap: break-word;
+            overflow: visible;
+            max-height: 15.6em;
+            height: 15.6em;
+            overflow-y: hidden;
+            text-overflow: ellipsis;
+            padding-top: 0.2em;
+            padding-bottom: 0.2em;
+        }
+
+        #walletaccept {
+            background: #d8f5db;
+            border-radius:0em 0em 0em 1em
+        }
+
+        #walletreject {
+            background: #f9dcdd;
+            position: relative;
+            border-radius:0em 0em 1em 0em;
+        }
+
+        div#walletbuttons {
+            /* width: 100%; */
+            /* height: 2.9em; */
+            /* top: 22.5em; */
+            /* position: absolute; */
+            /* height: 8em; */
+            padding: 0.7em;
+        }
+
+        div#walletbuttons > button {
+            border:0;
+            height:2.98em;
+            border-radius: 0.5em 0.5em 0.5em 0.5em; 
+        }
+
+        div#walletpropose {
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.9em;
+            padding: 0.5em;
+        }
+
+
 
         div#topbarflex {
             display: flex;
@@ -23,8 +116,9 @@
             padding-right: 0.5em;
         }
 
-        div#topbarflex> * {
-            background:  #f1f3ff;
+        div#topbarflex> div {
+            background: #dfeaf6;
+            color: #2e7cd9;
             padding: 0.5em;
             padding-left: 1em;
             border: none;
@@ -34,31 +128,38 @@
             margin-right:0.5em;
             text-overflow:ellipsis;
             flex-grow:1;
-
         }
 
-        div#topbarflex> *:first-of-type {
-            margin-left:0.5em;
-            background: #f1f3ff;
+        div#topbarflex>div:first-of-type {
             border-radius: 1em 0em 0em 1em;
+            margin-left:0.5em;
+            background: #dfeaf6;
             flex-grow: 2;
+            color: black;
         }
 
-        div#topbarflex > *:last-of-type {
+        div#topbarflex>div:nth-last-of-type(2){
             border-radius:0em 1em 1em 0em;
-            margin-left:0em
+        }
+        div#topbarflex>#walleticon{
+            border-radius:1em 1em 1em 1em;
+            max-width:1em;
+            max-height:1em;
+            padding: 0.5em 0.5em 0.5em 0.5em;
+            text-align: center;
+            background: white; 
         }
 
         #topbar {
             position: fixed;
             z-index: 10000;
-            background: hsl(0 0% 88% / 1);
+            background: #f5f5f5;
             top: 0;
             left: 0;
             width: 100vw;
             height: calc(4em - 3px);
             overflow: hidden;
-            border-bottom: 3px solid rgb(0 0 0 / 0.14);
+            border-bottom: 3px solid #ececec;
         }
 
         #sandbox {
@@ -75,8 +176,13 @@
             min-height: calc(100vh - 4em);
         }
 
+        div#walletbuttons > button {
+            min-width: 10.8em;
+        }
 
-
+        div#walletbuttons > button:not(:first-of-type) {
+            margin-left: 0.7em;
+        }
     </style>
 
     <title>Evernode Portal</title>
@@ -84,8 +190,19 @@
 
     <script>
 
+        // we always connect to directory contract first
+        // special logic flow retains directory connection in window.directory_hpc while other 
+        // contracts are connected to
         async function connect_to_contract(contract_id, contract_keys, contract_peers)
         {
+            
+            let is_directory = false;
+            if (contract_id == window.directory_contract.id)
+            {
+                is_directory = true;
+                contract_peers = window.directory_contract.peers;
+                contract_keys = window.directory_contract.keys;
+            }
 
             if (window.sodium.ready === false)
             {
@@ -94,8 +211,47 @@
             }
 
             if (typeof(window.user_keys) == 'undefined')
-                window.user_keys = await HotPocket.generateKeys(prompt('secret key hex'));
+            {
+                if (window.directory_hpc)
+                {
+                    console.log("DANGER user_keys disappeared during execution, wallet not synced.");
+                    // RH TODO add kill switch
+                    return;
+                }
 
+                let stored_seed = localStorage.getItem('evernode__secret__')
+                let decoded = null;
+
+                if (stored_seed)
+                try
+                {
+                    decoded = bech32.decode(stored_seed);
+                    if (decoded.prefix != 'evernode__secret__' || decoded.data.length != 32)
+                        throw new Error('invalid seed');
+                }
+                catch (e)
+                {
+                    console.log(e);
+                    console.log('decode failed')
+                    prompt('IMPORTANT. Decoding your evernode secret failed. Please backup the below',
+                            stored_seed);
+                    localStorage.setItem('failed__evernode__secret__' + Date.now(), stored_seed);
+                }
+
+                if (stored_seed == null || decoded == null)
+                {
+                    window.user_keys = await HotPocket.generateKeys();
+                    let seed = bech32.encode('evernode__secret__', window.user_keys.privateKey.slice(0,32));
+                    localStorage.setItem('evernode__secret__', seed);
+                }
+                else
+                {
+                    let hex = decoded.data.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
+                    window.user_keys = await HotPocket.generateKeys(hex);         
+                }
+            
+                window.user_keys.bech32 = bech32.encode('evernode', window.user_keys.publicKey);
+            }
 
             if (typeof(contract_keys.length) != 'number' || contract_keys.length < 1)
             {
@@ -112,36 +268,37 @@
             window.contract_id = contract_id;
             window.contract_keys = contract_keys;
             window.contract_peers = contract_peers;
-
-            if (window.hpc)
-                hpc.close();
-
-            let is_directory = false;
-            if (contract_id == window.directory_contract.id)
-            {
-                is_directory = true;
-                contract_peers = window.directory_contract.peers;
-                contract_keys = window.directory_contract.keys;
-            }
+        
+            if (is_directory && window.directory_hpc)
+                window.directory_hpc.close();
+            else if (window.hpc)
+                window.hpc.close();
 
             topbarhtml =
-                '<div id="evernodeurl" style="background: '+(is_directory ? '#ccffe8' : '#fff6cc' ) + 
+                '<div id="evernodeurl" style="background: '+(is_directory ? '#d8f5db' : '#fff6cc' ) + 
                 '">evernode://' + contract_id + '</div>';
 
             for (let i = 0; i < contract_peers.length; ++i)
                 topbarhtml += '<div class="evernodepeer">' + contract_peers[i] + '</div>';
 
+            topbarhtml += '<div id="walleticon" style="background:white" onclick="toggle_wallet(Date.now())"><i class="fa fa-user" aria-hidden="true"></i></div>';
+
             document.getElementById('topbarflex').innerHTML = topbarhtml;
 
-            window.hpc = await HotPocket.createClient(contract_peers, user_keys, {
+            let hpc_instance = await HotPocket.createClient(contract_peers, user_keys, {
                 contractId: contract_id,
                 validServerKeys: contract_keys
             });
 
-            if (!await hpc.connect()) {
+            if (!await hpc_instance.connect()) {
                 console.log('connect_to_contract: connection failed.');
                 return false;
             }
+
+            if (is_directory)
+                window.directory_hpc = hpc_instance;
+            else
+                window.hpc = hpc_instance;
 
             console.log('connect_to_contract: hotpocket connected.');
 
@@ -169,12 +326,12 @@
 
 
             // This will get fired if HP server disconnects unexpectedly.
-            hpc.on(HotPocket.events.disconnect, () => {
+            hpc_instance.on(HotPocket.events.disconnect, () => {
                 console.log('Disconnected');
             })
 
             // This will get fired as servers connects/disconnects after the initial connection establishment.
-            hpc.on(HotPocket.events.connectionChange, (server, action) => {
+            hpc_instance.on(HotPocket.events.connectionChange, (server, action) => {
                 console.log(server + " " + action);
             })
 
@@ -554,6 +711,98 @@
 
         }, false);
 
+
+        
+        function toggle_wallet(proposal, nonce)
+        {
+
+            if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
+                return;
+
+            window.wallet_nonce = nonce;
+        
+
+            document.getElementById('walletaddr').innerHTML = window.user_keys.bech32;
+            document.getElementById('walletbal').innerHTML = (typeof(window.user_keys.balance) == 'number' ?
+                window.user_keys.balance : '');
+
+            let is_hidden = document.getElementById('walleticon').style.background == 'white';
+            let is_proposal = typeof(proposal) == 'string'; 
+            if (is_hidden)
+            {
+                document.getElementById('walletbubble').style.display = 'block';
+                document.getElementById('walleticon').style.background = '#c4c4c4';
+                if (is_proposal)
+                {
+                    document.getElementById('walletpropose').style.display = 'block';
+                    document.getElementById('walletpropose').innerHTML = proposal;
+                    document.getElementById('walletaccept').innerHTML = 'Accept';
+                    document.getElementById('walletreject').innerHTML = 'Reject';
+                } else
+                { 
+                    document.getElementById('walletpropose').style.display = 'block';
+                    document.getElementById('walletpropose').innerHTML = '';
+                    document.getElementById('walletaccept').innerHTML = 'Secret';
+                    document.getElementById('walletreject').innerHTML = 'Restore Wallet';
+                }
+            } else
+            {
+                document.getElementById('walleticon').style.background = 'white';
+                document.getElementById('walletbubble').style.display = 'none';
+                document.getElementById('walletpropose').innerHTML = '';
+            }
+        }
+
+
+        function wallet_click(button, nonce)
+        {
+            if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
+                return;
+
+            window.wallet_nonce = nonce;
+
+            if (typeof(button) != 'string')
+                return;
+
+            button = button.toLowerCase();
+
+            if (button == 'secret')
+            {
+                prompt('This is your secret, protect it!', bech32.encode('evernode__secret__',
+                    window.user_keys.privateKey.slice(0,32)));
+                return;
+            }
+
+            if (button == 'restore wallet')
+            {
+                let new_seed = prompt('Paste your evernode secret below to restore',
+                                      'Warning this will override exisitng wallet.');
+                if (new_seed)
+                try
+                {
+                    let decoded = bech32.decode(new_seed);
+
+                    if (typeof(decoded) != 'object')
+                        throw new Error('Invalid bech32.');
+
+                    if (decoded.prefix != 'evernode__secret__' || decoded.data.length != 32)
+                        throw new Error('Invalid evernode secret.');
+
+                    localStorage.setItem('evernode__secret__', new_seed); 
+                                    
+                    alert('Page will now reload with your secret');
+                    
+                    window.location.reload();  
+
+                }
+                catch (e)
+                {
+                    alert('Wallet restore failed. Check you entered the full seceret. ' + e);
+                }
+            }
+            
+        }
+
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/sodium.min.js"
         integrity="sha512-oRfU7aik4u7f0dPAKgOyA4+bb/YRGfAaD5RA4Z3Mb2ycPcGDs+k8qAnDNd7ouruoqlIHSuGVaTTlEs91Gvd37A=="
@@ -561,6 +810,26 @@
     <script src="https://richardah.github.io/evernode-portal/hp-client-lib.js"></script>
 </head>
 <body>
+
+<div id="walletbubble">
+    <div id="walletheader">
+        <div id="walletaddr">evernode1kn2f9qqtedmjcsdpnqgd7r4s24rtwlgjgezruy8hqdx2vykk9rqqcx344w</div>
+        <div id="walletbal">E 10000.000001</div>
+    </div>
+    <div id="walletbody">
+        <div style="" id="walletpropose">{
+    request_type: "evers_send",
+    from: "evernode1blahlbhal",
+    to: "gpgbohiupfo384yrehfp;diufhjnfasdfasdfasdfasdfadsvsx",
+    amount: 100
+}
+        </div>
+    </div>
+    <div id="walletbuttons">
+        <button id="walletaccept" onclick="wallet_click(this.innerText, Date.now());">Accept</button><button id="walletreject" onclick="wallet_click(this.innerText, Date.now());">Reject</button>
+    </div>
+</div>
+
 <div id="topbar">
     <div id="topbarflex">
         <div id="evernodeurl">
@@ -585,8 +854,7 @@
         window.directory_contract.peers
     ).then( ()=>
     {
-        console.log("connected!~!");
-
+        console.log("connected to directory");
         rpc('info_main').then( result => {
             reset_sandbox(result);
         }).catch(y=>{
