@@ -1,12 +1,17 @@
 <html>
 <head>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/js/all.min.js"></script>
-<!--RH TODO add checksums to these -->
-<script src="https://slowli.github.io/bech32-buffer/assets/js/bech32-buffer.min.js"></script>
+<!-- currency symbol: ꝟ -->
+<!--RH TODO host these files? If so remember to update sandbox injected versions of these -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css"
+integrity="sha384-vp86vTRFVJgpjF9jiIGPEEqYqlDwgyBgEF109VFjmqGmIY/Y4HV4d3Gp2irVfcrp" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/js/all.min.js"
+integrity="sha384-9/D4ECZvKMVEJ9Bhr3ZnUAF+Ahlagp1cyPC7h5yDlZdXs4DQ/vRftzfd+2uFUuqS" crossorigin="anonymous"></script>
+<script src="https://slowli.github.io/bech32-buffer/assets/js/bech32-buffer.min.js"
+integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMSLe" crossorigin="anonymous"></script>
     <style>
 
-        body {
+        body
+        {
             overscroll-behavior: none;
             margin: 0;
             padding: 0;
@@ -14,6 +19,47 @@
             -moz-user-select: none;
             -webkit-user-select: none;
             -ms-user-select: none;
+        }
+
+
+        @-moz-keyframes spin { 100% { -moz-transform: rotate(360deg); } }
+        @-webkit-keyframes spin { 100% { -webkit-transform: rotate(360deg); } }
+        @keyframes spin { 100% { -webkit-transform: rotate(360deg); transform:rotate(360deg); } }
+
+        .fa-spinner
+        {
+            -webkit-animation: spin 4s linear infinite;
+            -moz-animation: spin 4s linear infinite;
+            animation: spin 4s linear infinite;
+        }
+
+        div#walletbody:before
+        {
+            content: "Proposed Transaction...";
+            font-size: 0.9em;
+            margin-left: 0.5em;
+            margin-right: 0.5em;
+            font-family: monospace;
+            color: #000000;
+            width: calc(100% - 2em);
+            background: #EEEEEE;
+            padding: 0.5em;
+            display: inline-block;
+        }
+
+        div#walletaddrcopy {
+            position: absolute;
+            right: 1em;
+            color: #000eee;
+        }
+
+        div#walletbalsend {
+            color: #000eee;
+        }
+
+        div#walletbalcontainer > *
+        {
+            display: inline;
         }
 
         #walletbubble {
@@ -32,21 +78,27 @@
             box-shadow: 0px 1px 5px #00000042;
         }
 
+        div#walletbal:before {
+            content: "ꝟ";
+            display: inline-block;
+        }
+
         div#walletheader {
             min-height: 4em;
             border-bottom: 1px solid #f5f5f5;
         }
 
         div#walletaddr {
-            width: 15em;
+            width: 19em;
             overflow: hidden;
             text-overflow: ellipsis;
             margin-left: 50%;
             transform: translate(-50%);
             margin-top: 1em;
+            font-family:monospace;
         }
 
-        div#walletbal {
+        div#walletbalcontainer {
             width: 100%;
             text-align: center;
             margin-top: 0.5em;
@@ -79,11 +131,6 @@
         }
 
         div#walletbuttons {
-            /* width: 100%; */
-            /* height: 2.9em; */
-            /* top: 22.5em; */
-            /* position: absolute; */
-            /* height: 8em; */
             padding: 0.7em;
         }
 
@@ -164,16 +211,16 @@
 
         #sandbox {
             margin-top:4em;
-            margin-left: 0em;
-            margin-right:0em;
-            margin-bottom: 0em;
-            padding-left: 0em;
-            padding-right: 0em;
-            padding-bottom: 0em;
-            padding-top: 0em;
-            border: none;
-            width: 100vw;
-            min-height: calc(100vh - 4em);
+        margin-left: 0em;
+        margin-right:0em;
+        margin-bottom: 0em;
+        padding-left: 0em;
+        padding-right: 0em;
+        padding-bottom: 0em;
+        padding-top: 0em;
+        border: none;
+        width: 100vw;
+        min-height: calc(100vh - 4em);
         }
 
         div#walletbuttons > button {
@@ -683,10 +730,23 @@
                             ")).observe(document.documentElement);\r\n" +
                             "}};<" + "/script>\r\n";
 
-            const inject2 = '<'+'script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/' +
-                            'sodium.min.js" integrity="sha512-oRfU7aik4u7f0dPAKgOyA4+bb/YRGfAaD5RA4Z3Mb2yc' +
-                            'PcGDs+k8qAnDNd7ouruoqlIHSuGVaTTlEs91Gvd37A==" crossorigin="anonymous"><'+'/script>' +
-                            "\r\n";
+            const inject2 = '<'+'script ' +
+                            'src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/sodium.min.js" ' +
+                            'integrity="sha512-oRfU7aik4u7f0dPAKgOyA4+bb/YRGfAaD5RA4Z3Mb2yc' +
+                            'PcGDs+k8qAnDNd7ouruoqlIHSuGVaTTlEs91Gvd37A==" crossorigin="anonymous">' +
+                            '<'+'/script>' + "\r\n" +
+                            '<'+'link rel="stylesheet" ' + 
+                            'href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" ' +
+                            'integrity="sha384-vp86vTRFVJgpjF9jiIGPEEqYqlDwgyBgEF109VFjmqGmIY/Y4HV4d3Gp2irVfcrp" ' +
+                            'crossorigin="anonymous">' + "\r\n" +
+                            '<'+'script ' +
+                            'src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/js/all.min.js" ' +
+                            'integrity="sha384-9/D4ECZvKMVEJ9Bhr3ZnUAF+Ahlagp1cyPC7h5yDlZdXs4DQ/vRftzfd+2uFUuqS" ' +
+                            'crossorigin="anonymous"><'+'/script>' + "\r\n" + 
+                            '<'+'script ' +
+                            'src="https://slowli.github.io/bech32-buffer/assets/js/bech32-buffer.min.js" ' +
+                            'integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMSLe" ' +
+                            'crossorigin="anonymous"><'+'/script>' + "\r\n";
 
             let sandbox_element = document.getElementById('sandbox');
             if (!sandbox_element)
@@ -713,7 +773,7 @@
 
 
         
-        function toggle_wallet(proposal, nonce)
+        function toggle_wallet(nonce, proposal)
         {
 
             if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
@@ -724,10 +784,26 @@
 
             document.getElementById('walletaddr').innerHTML = window.user_keys.bech32;
             document.getElementById('walletbal').innerHTML = (typeof(window.user_keys.balance) == 'number' ?
-                window.user_keys.balance : '');
+                window.user_keys.balance : ' - ');
 
             let is_hidden = document.getElementById('walleticon').style.background == 'white';
-            let is_proposal = typeof(proposal) == 'string'; 
+            let is_proposal = typeof(proposal) == 'string';
+
+            // proposals always open the dialog
+            if (is_proposal)
+                is_hidden = true;
+
+            if (!is_proposal)
+            {
+                document.getElementById('walletbody').style.display = 'none';
+                document.getElementById('walletbubble').style.height = '9em';
+            }
+            else
+            {
+                document.getElementById('walletbody').style.display = 'block';
+                document.getElementById('walletbubble').style.height = '25em';
+            }
+ 
             if (is_hidden)
             {
                 document.getElementById('walletbubble').style.display = 'block';
@@ -736,7 +812,7 @@
                 {
                     document.getElementById('walletpropose').style.display = 'block';
                     document.getElementById('walletpropose').innerHTML = proposal;
-                    document.getElementById('walletaccept').innerHTML = 'Accept';
+                    document.getElementById('walletaccept').innerHTML = 'Submit';
                     document.getElementById('walletreject').innerHTML = 'Reject';
                 } else
                 { 
@@ -803,6 +879,62 @@
             
         }
 
+    function copy_address()
+    {
+        prompt('Copy your public address from below', document.getElementById('walletaddr').innerText);
+    }
+
+    function send_dialog()
+    {
+        // RH TODO: clean up this, make a dedicated dialog for it
+        let to = prompt('Enter a destination address. You will get to check this at the end.');
+        if (to == null)
+            return;
+
+        try
+        {
+            let decoded = bech32.decode(to);
+            if (decoded.prefix != 'evernode')
+                throw new Error('bad prefix');
+            if (decoded.data.length != 32)
+                throw new Error('bad length');
+        }
+        catch (e)
+        {
+            alert('Specified address is not a valid evernode address. Should start with evernode1. ' + e);
+            return;
+        }
+
+        let amt = '';
+        do 
+        {
+            amt = prompt('Enter an amount of Evers to send. You will get to check this at the end.');
+            if (amt == null)
+                return;
+            try 
+            {
+                amt = parseFloat(amt + '', 10);
+            }
+            catch (e)
+            {
+                amt = null
+            }
+            if (typeof(amt) != 'number')
+                alert('Invalid number. Please enter only decimal digits.');
+        }
+        while (typeof(amt) != 'number');
+        
+        toggle_wallet(Date.now(), JSON.stringify({
+            method: "evers_send",
+            params: {
+                amount: amt,
+                destination: to
+            }
+        }, null, 2)); 
+
+    }
+
+
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers/0.5.4/sodium.min.js"
         integrity="sha512-oRfU7aik4u7f0dPAKgOyA4+bb/YRGfAaD5RA4Z3Mb2ycPcGDs+k8qAnDNd7ouruoqlIHSuGVaTTlEs91Gvd37A=="
@@ -813,20 +945,18 @@
 
 <div id="walletbubble">
     <div id="walletheader">
+        <div id="walletaddrcopy"><i class="far fa-copy" onclick="copy_address()"></i></div>
         <div id="walletaddr">evernode1kn2f9qqtedmjcsdpnqgd7r4s24rtwlgjgezruy8hqdx2vykk9rqqcx344w</div>
-        <div id="walletbal">E 10000.000001</div>
-    </div>
-    <div id="walletbody">
-        <div style="" id="walletpropose">{
-    request_type: "evers_send",
-    from: "evernode1blahlbhal",
-    to: "gpgbohiupfo384yrehfp;diufhjnfasdfasdfasdfasdfadsvsx",
-    amount: 100
-}
+        <div id="walletbalcontainer">
+            <div id="walletbal">ꝟ10000.000001</div>
+            <div id="walletbalsend"><i class="fas fa-paper-plane" onclick="send_dialog()"></i></div>
         </div>
     </div>
+    <div id="walletbody">
+        <div style="" id="walletpropose"></div>
+    </div>
     <div id="walletbuttons">
-        <button id="walletaccept" onclick="wallet_click(this.innerText, Date.now());">Accept</button><button id="walletreject" onclick="wallet_click(this.innerText, Date.now());">Reject</button>
+        <button id="walletaccept" onclick="wallet_click(this.innerText, Date.now());">Submit</button><button id="walletreject" onclick="wallet_click(this.innerText, Date.now());">Reject</button>
     </div>
 </div>
 
