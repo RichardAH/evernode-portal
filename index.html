@@ -772,9 +772,18 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         }, false);
 
 
-        
-        function toggle_wallet(nonce, proposal)
+       
+     
+        function toggle_wallet(nonce, proposal, force_close)
         {
+
+            if (force_close)
+            {
+                document.getElementById('walletbubble').style.display = 'none';
+                document.getElementById('walletpropose').innerHTML = '';
+                document.getElementById('walleticon').style.background = 'white';
+                return;
+            }
 
             if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
                 return;
@@ -791,7 +800,10 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
             // proposals always open the dialog
             if (is_proposal)
+            {
                 is_hidden = true;
+                window.current_proposal = proposal;
+            }
 
             if (!is_proposal)
             {
@@ -875,6 +887,43 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 {
                     alert('Wallet restore failed. Check you entered the full seceret. ' + e);
                 }
+                return;
+            }
+
+            if (button == 'submit')
+            {
+
+                let cleanup = ()=>
+                {
+                    toggle_wallet(Date.now(), null, true);
+                };
+
+                let proposal_obj = null; 
+                try
+                {
+                    proposal_obj = JSON.parse(window.current_proposal);
+                    rpc(proposal_obj.method, proposal.params).then( x=>
+                    {
+                        alert('Submitted: ' + x);
+                        cleanup();
+                    }).catch(e=>
+                    {
+                        alert('Error submitting: ' + e);
+                        cleanup();
+                    });
+                }
+                catch (e)
+                {
+                    alert('Error submitting: ' + e);
+                    cleanup();
+                }
+                return; 
+            }
+
+            if (button == 'reject')
+            {
+                toggle_wallet(Date.now(), null, true);
+                return;
             }
             
         }
@@ -927,11 +976,11 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         toggle_wallet(Date.now(), JSON.stringify({
             method: "evers_send",
             params: {
-                amount: amt,
-                destination: to
+                to: to,
+                amt: amt,
+                seq: Date.now()
             }
         }, null, 2)); 
-
     }
 
 
