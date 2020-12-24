@@ -81,6 +81,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         div#walletbal:before {
             content: "ꤲ";
             display: inline-block;
+            margin-right: 0.3em;
         }
 
         div#walletheader {
@@ -573,6 +574,61 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             }
             return retval;
         }
+
+        // propose an action for the directory contract for the user to decide if they will take
+        function propose(nonce, proposal)
+        {
+
+            if (typeof(window.last_proposal_id) != 'undefined' && window.last_proposal_id >= nonce)
+                return console.log("proposal nonce must increment since the last proposal");
+
+            let proposal_id = nonce;
+            window.last_proposal_id = proposal_id;
+
+            let in_sandbox = window.origin == 'null';
+            
+            let p = {};
+
+            if (!('method' in proposal))
+                return console.log("received propose message without method key");
+
+            p.method = proposal.method;
+        
+            if ('params' in proposal)
+                p.params = proposal.params;
+            else
+                p.params = {};
+
+            if (typeof(window.pending_proposal) == 'undefined')
+                window.pending_proposal = {};
+
+            if (proposal_id in window.pending_proposal)
+                return console.log("proposal id already exists");
+
+            p.proposal_id = proposal_id;
+
+            let retval = new Promise((resolve, reject) => {
+                window.pending_proposal[proposal_id] = { resolve: resolve, reject: reject, proposal: p };
+            });
+
+
+            if (in_sandbox)
+            {
+                interframe_send({type: 'proposal', data: JSON.stringify(p)});
+            }
+            else
+            {
+                toggle_wallet(Date.now(), {
+                    method: p.method,
+                    params: p.params,
+                    proposal_id: p.proposal_id
+                }, false);
+            }
+
+            return retval;
+        }
+
+
         function interframe_message_handler(event)
         {
 
@@ -638,13 +694,90 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 if (in_sandbox) 
                     return console.log("interframe_message_handler: received directory message inside sandbox");
 
-
+                document.location.reload();
+                return;
             }
 
             if (j.type == 'load')
             {
                 if (in_sandbox) 
                     return console.log("interframe_message_handler: received load message inside sandbox");
+            }
+
+            if (j.type == 'propose')
+            {
+                if (in_sandbox)
+                    return console.log("interframe_message_handler: received propose message inside sandbox");
+
+                if (!('data' in j))
+                    return console.log("interframe_message_handler: propose request missing data field");
+
+                try
+                {
+                    let data = JSON.parse(j.data);
+                }
+                catch (e)
+                {
+                    return console.log(
+                        "interframe_message_handler: received propose message with non-json data field");
+                }
+
+                if (!('method' in data))
+                    return console.log("interframe_message_handler: propose message missing data.method");
+            
+                let inner_proposal_id = null;
+                if (!('proposal_id' in data))
+                    inner_proposal_id = data.proposal_id;
+
+                let p = {
+                    method: data.method,
+                    params: (data.params ? data.params : {})
+                };
+
+                let response_handler = x => {
+                };
+
+                propose(Date.now(), p).then( x=> {
+                    interframe_send({
+                        type: proposal_response,
+                        data: JSON.stringify(x), 
+                        proposal_id: inner_proposal_id,
+                        success: true
+                    });
+                }).catch ( x=> {
+                    interframe_send({
+                        type: proposal_response,
+                        data: JSON.stringify(x), 
+                        proposal_id: inner_proposal_id,
+                        success: false
+                    });
+                });
+
+                
+                return;
+            }
+
+            if (j.type == 'propose_response')
+            {
+                if (!in_sandbox)
+                    return console.log("interframe_message_handler: received propose_response message in top frame");
+
+                if (!('data' in j))
+                    return console.log("interframe_message_handler: propose_response missing data field");
+
+                if (!('proposal_id' in j))
+                    return console.log("interframe_message_handler: propose_response missing proposal_id field");
+                
+                if (!(j.proposal_id in window.pending_proposal))
+                    return console.log("interframe_message_handler: propose_response referenced a proposal_id " + 
+                        "which does not exist.");
+
+                if (j.success)
+                    window.pending_proposal[j.proposal_id].resolve(j.data);
+                else
+                    window.pending_proposal[j.proposal_id].reject(j.data);
+
+                return;
             }
 
             if (j.type == 'rpc')
@@ -804,21 +937,47 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
                 return;
 
-            window.wallet_nonce = nonce;
-        
+            window.wallet_nonce = nonce;        
+
+            if (typeof(proposal) != 'object' && typeof(proposal) != 'string' && typeof(proposal) != 'undefined')
+                return console.log("toggle_wallet: invalid proposal, should be string or object");
+
+            if (typeof(proposal) == 'object')
+                proposal = JSON.stringify(proposal);
+
+            let proposal_id = null;
+            if (typeof(proposal) == 'string')
+            {
+                try
+                {
+                    proposal_obj = JSON.parse(proposal);
+                    if (typeof(proposal_obj.proposal_id) != 'undefined')
+                        proposal_id = proposal_obj.proposal_id;
+                }
+                catch(e)
+                {
+                    console.log("toggle_wallet: invalid proposal passed (must be json)");
+                    return;
+                }
+            }
+
+
+            let is_proposal = typeof(proposal) == 'string';
+
+            if (is_proposal && proposal_id == null)
+                return console.log("toggle_wallet: attempt to pass a proposal without a proposal_id");
 
             document.getElementById('walletaddr').innerHTML = window.user_keys.bech32;
             document.getElementById('walletbal').innerHTML = (typeof(window.user_keys.balance) == 'number' ?
                 window.user_keys.balance : ' - ');
 
             let is_hidden = document.getElementById('walleticon').style.background == 'white';
-            let is_proposal = typeof(proposal) == 'string';
 
             // proposals always open the dialog
             if (is_proposal)
             {
                 is_hidden = true;
-                window.current_proposal = proposal;
+                window.current_proposal = { proposal: proposal, proposal_id: proposal_id };
             }
 
             if (!is_proposal)
@@ -842,23 +1001,30 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                     document.getElementById('walletpropose').innerHTML = proposal;
                     document.getElementById('walletaccept').innerHTML = 'Submit';
                     document.getElementById('walletreject').innerHTML = 'Reject';
+                    document.getElementById('walletaccept').dataset.proposal_id = proposal_id;
+                    document.getElementById('walletreject').dataset.proposal_id = proposal_id;
                 } else
                 { 
                     document.getElementById('walletpropose').style.display = 'block';
                     document.getElementById('walletpropose').innerHTML = '';
                     document.getElementById('walletaccept').innerHTML = 'Secret';
                     document.getElementById('walletreject').innerHTML = 'Restore Wallet';
+                    document.getElementById('walletaccept').dataset.proposal_id = null;
+                    document.getElementById('walletreject').dataset.proposal_id = null;
                 }
             } else
             {
                 document.getElementById('walleticon').style.background = 'white';
                 document.getElementById('walletbubble').style.display = 'none';
                 document.getElementById('walletpropose').innerHTML = '';
+                document.getElementById('walletpropose').dataset.proposal_id = null;
+                document.getElementById('walletaccept').dataset.proposal_id = null;
+                document.getElementById('walletreject').dataset.proposal_id = null;
             }
         }
 
 
-        function wallet_click(button, nonce)
+        function wallet_click(nonce, button, proposal_id)
         {
             if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
                 return;
@@ -919,13 +1085,25 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 try
                 {
                     proposal_obj = JSON.parse(window.current_proposal);
-                    rpc(proposal_obj.method, proposal.params).then( x=>
+                    if (proposal_obj.proposal_id != proposal_id)
+                        return console.log("wallet_click: refusing to submit when current_proposal doesn't match " +
+                            "proposal_id attached to submit button");
+
+                    rpc(proposal_obj.method, proposal_obj.params, true).then( x=>
                     {
                         alert('Submitted: ' + x);
+
+                        let resolver = window.pending_proposal[proposal_id];
+                        if (resolver)
+                            resolver.resolve(x);
+
                         cleanup();
-                    }).catch(e=>
+                    }).catch( e=>
                     {
                         alert('Error submitting: ' + e);
+                        let resolver = window.pending_proposal[proposal_id];
+                        if (resolver)
+                            resolver.reject(x);
                         cleanup();
                     });
                 }
@@ -940,6 +1118,11 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             if (button == 'reject')
             {
                 toggle_wallet(Date.now(), null, true);
+                let resolver = window.pending_proposal[proposal_id];
+                if (resolver)
+                    resolver.reject(JSON.stringify({
+                        success: false, info: "user cancelled"
+                    }));
                 return;
             }
             
@@ -1012,9 +1195,9 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 <div id="walletbubble">
     <div id="walletheader">
         <div id="walletaddrcopy"><i class="far fa-copy" onclick="copy_address()"></i></div>
-        <div id="walletaddr">evernode1kn2f9qqtedmjcsdpnqgd7r4s24rtwlgjgezruy8hqdx2vykk9rqqcx344w</div>
+        <div id="walletaddr"></div>
         <div id="walletbalcontainer">
-            <div id="walletbal">ꤲ10000.000001</div>
+            <div id="walletbal"></div>
             <div id="walletbalsend"><i class="fas fa-paper-plane" onclick="send_dialog()"></i></div>
         </div>
     </div>
@@ -1022,7 +1205,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         <div style="" id="walletpropose"></div>
     </div>
     <div id="walletbuttons">
-        <button id="walletaccept" onclick="wallet_click(this.innerText, Date.now());">Submit</button><button id="walletreject" onclick="wallet_click(this.innerText, Date.now());">Reject</button>
+        <button id="walletaccept" onclick="wallet_click(Date.now(), this.innerText, this.dataset.proposal_id);">Submit</button><button id="walletreject" onclick="wallet_click(Date.now(), this.innerText, this.dataset.proposal_id);">Reject</button>
     </div>
 </div>
 
