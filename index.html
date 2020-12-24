@@ -1,6 +1,6 @@
 <html>
 <head>
-<!-- currency symbol: ꝟ -->
+<!-- currency symbol: ꤲ -->
 <!--RH TODO host these files? If so remember to update sandbox injected versions of these -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css"
 integrity="sha384-vp86vTRFVJgpjF9jiIGPEEqYqlDwgyBgEF109VFjmqGmIY/Y4HV4d3Gp2irVfcrp" crossorigin="anonymous">
@@ -79,7 +79,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         }
 
         div#walletbal:before {
-            content: "ꝟ";
+            content: "ꤲ";
             display: inline-block;
         }
 
@@ -441,8 +441,9 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 return false;
             }
 
-            let calc_hash = sodium.crypto_generichash(16, sodium.from_string(outer.payload),
-                                                       window.evernode_cookie, 'hex');
+            let cookie = window.evernode_cookie;
+
+            let calc_hash = sodium.crypto_generichash(16, sodium.from_string(outer.payload), cookie, 'hex');
 
             if (calc_hash != outer.hash)
             {
@@ -457,6 +458,8 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 return false;
             }
 
+            if (typeof(window.other_nonce) == 'undefined')
+                window.other_nonce = 0;
 
             if (inner.nonce <= window.other_nonce)
             {
@@ -466,7 +469,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
             window.other_nonce = inner.nonce;
 
-            return inner.content;
+            return { is_directory: cookie == window.directory_cookie, content: inner.content };
         }
 
         function interframe_send(obj)
@@ -482,13 +485,16 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         }
 
         // RH TODO rpc should route multiple requests through multiple peers
-        // RH TODO other than for read requests some sort of UNL proof of validation should be provided by connected peers
-        function rpc(method, params)
+        // RH TODO other than for read requests some sort of UNL proof of validation should be provided by
+        //         connected peers
+        function rpc(method, params, for_directory)
         {
 
             let in_sandbox = window.origin == 'null';
 
-            if (!in_sandbox && typeof(window.hpc) == 'undefined')
+            let hpc = (for_directory ? window.directory_hpc : window.hpc);
+
+            if (!in_sandbox && typeof(hpc) == 'undefined')
             {
                 console.log("rpc: not connected to a contract");
                 return false;
@@ -582,8 +588,11 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 return; // ignore self messages
 
             let j = interframe_unwrap(event.data);
-            if (j === false)
+            if (j === false || !('is_directory' in j) || !('content' in j))
                 return; // invalid message
+
+            let is_directory = j.is_directory;
+            j = j.content;
 
             // api:
             // type ::= resize | status | reconnect | directory | rpc | load
@@ -677,10 +686,11 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                         });
                     };
 
-                if ('params' in j.data)
-                    return rpc(j.data.method, j.data.params).then(resolve).catch(reject);
 
-                return rpc(j.data.method).then(resolve).catch(reject);
+                if ('params' in j.data)
+                    return rpc(j.data.method, j.data.params, is_directory).then(resolve).catch(reject);
+
+                return rpc(j.data.method, {}, is_directory).then(resolve).catch(reject);
             }
 
             if (j.type == 'rpc_response')
@@ -696,12 +706,16 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
         window.addEventListener("message", interframe_message_handler, false);
 
-        function reset_sandbox(html)
+
+        function reset_sandbox(html, is_directory)
         {
+
 
             window.evernode_cookie = new Uint8Array(64);
             window.evernode_cookie_current = "";
             crypto.getRandomValues(window.evernode_cookie);
+            if (is_directory)
+                window.directory_cookie = window.evernode_cookie;
             window.our_nonce = 0;
             window.their_nonce = 0;
             const inject1 = "<" + "script>\r\n" +
@@ -777,6 +791,8 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         function toggle_wallet(nonce, proposal, force_close)
         {
 
+            update_balance();
+
             if (force_close)
             {
                 document.getElementById('walletbubble').style.display = 'none';
@@ -848,6 +864,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 return;
 
             window.wallet_nonce = nonce;
+
 
             if (typeof(button) != 'string')
                 return;
@@ -997,7 +1014,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         <div id="walletaddrcopy"><i class="far fa-copy" onclick="copy_address()"></i></div>
         <div id="walletaddr">evernode1kn2f9qqtedmjcsdpnqgd7r4s24rtwlgjgezruy8hqdx2vykk9rqqcx344w</div>
         <div id="walletbalcontainer">
-            <div id="walletbal">ꝟ10000.000001</div>
+            <div id="walletbal">ꤲ10000.000001</div>
             <div id="walletbalsend"><i class="fas fa-paper-plane" onclick="send_dialog()"></i></div>
         </div>
     </div>
@@ -1025,17 +1042,34 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
     reset_sandbox('Loading ...');
 
 
-
+    function update_balance()
+    {
+        rpc('info_account', {"acc": window.user_keys.bech32}, true).then( x => {
+            x = JSON.parse(x);
+            window.user_keys.balance = x.amount;
+            document.getElementById('walletbal').innerHTML = '' + x.amount;
+        }).catch(e => {console.log(e);});
+    }
     
     connect_to_contract(
         window.directory_contract.id,
         window.directory_contract.keys,
         window.directory_contract.peers
-    ).then( ()=>
+    ).then( (x)=>
     {
+        if (x === false)
+        {
+            reset_sandbox('<html><head></head><body><h1>Failed to connect to directory contract.</h1></body></html>');
+            return;
+        }
         console.log("connected to directory");
-        rpc('info_main').then( result => {
-            reset_sandbox(result);
+        rpc('info_main', {}, true).then( result => {
+
+            reset_sandbox(result, true);
+
+            update_balance();
+
+
         }).catch(y=>{
             console.log(y);
         });
