@@ -26,6 +26,14 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         @-webkit-keyframes spin { 100% { -webkit-transform: rotate(360deg); } }
         @keyframes spin { 100% { -webkit-transform: rotate(360deg); transform:rotate(360deg); } }
 
+        div#walletspinner {
+            width: 100%;
+            font-size: 2em;
+            text-align: center;
+            color: #000eee;
+            display: none;
+        }
+
         .fa-spinner
         {
             -webkit-animation: spin 4s linear infinite;
@@ -924,6 +932,9 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
         function toggle_wallet(nonce, proposal, force_close)
         {
 
+            console.log("toggle_wallet, proposal:");
+            console.log(proposal);
+
             update_balance();
 
             if (force_close)
@@ -977,7 +988,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             if (is_proposal)
             {
                 is_hidden = true;
-                window.current_proposal = { proposal: proposal, proposal_id: proposal_id };
+                window.current_proposal = proposal;
             }
 
             if (!is_proposal)
@@ -998,7 +1009,8 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 if (is_proposal)
                 {
                     document.getElementById('walletpropose').style.display = 'block';
-                    document.getElementById('walletpropose').innerHTML = proposal;
+                    document.getElementById('walletpropose').innerHTML = 
+                        JSON.stringify(JSON.parse(proposal), null, 2);
                     document.getElementById('walletaccept').innerHTML = 'Submit';
                     document.getElementById('walletreject').innerHTML = 'Reject';
                     document.getElementById('walletaccept').dataset.proposal_id = proposal_id;
@@ -1026,6 +1038,12 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
         function wallet_click(nonce, button, proposal_id)
         {
+
+            if (typeof(proposal_id) == 'string')
+                proposal_id = parseInt(proposal_id, 10)
+
+            console.log('wallet_click proposal_id: ' + proposal_id);
+
             if (typeof(window.wallet_nonce) == 'number' && window.wallet_nonce >= nonce)
                 return;
 
@@ -1076,10 +1094,20 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             if (button == 'submit')
             {
 
+                if (typeof(proposal_id) != 'number')
+                {
+                    console.log("invalid proposal_id passed to wallet_click: " + proposal_id + " : " + typeof(proposal_id));
+                    return;
+                }
+            
+
                 let cleanup = ()=>
                 {
                     toggle_wallet(Date.now(), null, true);
+                    document.getElementById('walletbuttons').style.display = 'block';
+                    document.getElementById('walletspinner').style.display = 'none';
                 };
+
 
                 let proposal_obj = null; 
                 try
@@ -1089,21 +1117,22 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                         return console.log("wallet_click: refusing to submit when current_proposal doesn't match " +
                             "proposal_id attached to submit button");
 
+                    
+                    document.getElementById('walletbuttons').style.display = 'none';
+                    document.getElementById('walletspinner').style.display = 'block';
+
                     rpc(proposal_obj.method, proposal_obj.params, true).then( x=>
                     {
-                        alert('Submitted: ' + x);
-
                         let resolver = window.pending_proposal[proposal_id];
                         if (resolver)
                             resolver.resolve(x);
-
                         cleanup();
                     }).catch( e=>
                     {
                         alert('Error submitting: ' + e);
                         let resolver = window.pending_proposal[proposal_id];
                         if (resolver)
-                            resolver.reject(x);
+                            resolver.reject(e);
                         cleanup();
                     });
                 }
@@ -1172,15 +1201,17 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 alert('Invalid number. Please enter only decimal digits.');
         }
         while (typeof(amt) != 'number');
-        
-        toggle_wallet(Date.now(), JSON.stringify({
+       
+        propose(Date.now(), 
+        {
             method: "evers_send",
             params: {
                 to: to,
                 amt: amt,
                 seq: Date.now()
-            }
-        }, null, 2)); 
+            },
+            proposal_id: Date.now()
+        }).then( x=> { alert("Evers Sent!"); }).catch( x=> {alert("Failed!");});
     }
 
 
@@ -1203,6 +1234,9 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
     </div>
     <div id="walletbody">
         <div style="" id="walletpropose"></div>
+    </div>
+    <div id="walletspinner">
+        <i class="fas fa-spinner"></i>
     </div>
     <div id="walletbuttons">
         <button id="walletaccept" onclick="wallet_click(Date.now(), this.innerText, this.dataset.proposal_id);">Submit</button><button id="walletreject" onclick="wallet_click(Date.now(), this.innerText, this.dataset.proposal_id);">Reject</button>
