@@ -514,6 +514,9 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 window.pending_rpc = {};
 
                 let response_handler = (response) => {
+
+                    console.log("rpc in  [" + (in_sandbox ? "sandbox" : "toplevel") + "] = \r\n" + JSON.stringify(response));
+
                     if (typeof(response) != 'object')
                     {
                         console.log("received invalid json response from contract");
@@ -562,6 +565,8 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 request['params'] = params;
 
             request = JSON.stringify(request);
+
+            console.log("rpc out [" + (in_sandbox ? "sandbox" : "toplevel") + "] = \r\n" + request);
 
             let retval = new Promise((resolve, reject) => {
                 window.pending_rpc[request_id] = { resolve: resolve, reject: reject };
@@ -642,12 +647,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
             let in_sandbox = window.origin == 'null';
 
-            if (in_sandbox && typeof(window.rpc_response_handler) == 'undefined')
-            {
-                console.log("sandbox_onmessage: could not find rpc handler");
-                return false;
-            }
-        
+
             if (event.origin == window.origin)
                 return; // ignore self messages
 
@@ -658,6 +658,9 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             let is_directory = j.is_directory;
             j = j.content;
 
+            console.log("interframe_message_handler [" + (in_sandbox ? "sandbox" : "toplevel") + "-" + (is_directory ?
+                    "directory" : "contract") + "] = " +
+                    JSON.stringify(j));
             // api:
             // type ::= resize | status | reconnect | directory | rpc | load
             // resize     -  height of sandbox has changed
@@ -712,7 +715,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                     return console.log("interframe_message_handler: received load message inside sandbox");
             }
 
-            if (j.type == 'propose')
+            if (j.type == 'proposal')
             {
                 if (in_sandbox)
                     return console.log("interframe_message_handler: received propose message inside sandbox");
@@ -720,9 +723,10 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 if (!('data' in j))
                     return console.log("interframe_message_handler: propose request missing data field");
 
+                let data = null;
                 try
                 {
-                    let data = JSON.parse(j.data);
+                    data = JSON.parse(j.data);
                 }
                 catch (e)
                 {
@@ -732,10 +736,16 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
                 if (!('method' in data))
                     return console.log("interframe_message_handler: propose message missing data.method");
+
+                console.log('proposal:');
+                console.log(JSON.stringify(data, null, 2));
             
                 let inner_proposal_id = null;
-                if (!('proposal_id' in data))
-                    inner_proposal_id = data.proposal_id;
+                if ('proposal_id' in data)
+                    inner_proposal_id = data['proposal_id'];
+                else
+                    return console.log("interframe_message_handler: propose message missing proposal_id");
+                
 
                 let p = {
                     method: data.method,
@@ -745,16 +755,18 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 let response_handler = x => {
                 };
 
+                console.log('inner_proposal_id: ' + inner_proposal_id);
+
                 propose(Date.now(), p).then( x=> {
                     interframe_send({
-                        type: proposal_response,
+                        type: "proposal_response",
                         data: JSON.stringify(x), 
                         proposal_id: inner_proposal_id,
                         success: true
                     });
                 }).catch ( x=> {
                     interframe_send({
-                        type: proposal_response,
+                        type: "proposal_response",
                         data: JSON.stringify(x), 
                         proposal_id: inner_proposal_id,
                         success: false
@@ -765,19 +777,21 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                 return;
             }
 
-            if (j.type == 'propose_response')
+            if (j.type == 'proposal_response')
             {
+
+
                 if (!in_sandbox)
-                    return console.log("interframe_message_handler: received propose_response message in top frame");
+                    return console.log("interframe_message_handler: received proposal_response message in top frame");
 
                 if (!('data' in j))
-                    return console.log("interframe_message_handler: propose_response missing data field");
+                    return console.log("interframe_message_handler: proposal_response missing data field");
 
                 if (!('proposal_id' in j))
-                    return console.log("interframe_message_handler: propose_response missing proposal_id field");
+                    return console.log("interframe_message_handler: proposal_response missing proposal_id field");
                 
                 if (!(j.proposal_id in window.pending_proposal))
-                    return console.log("interframe_message_handler: propose_response referenced a proposal_id " + 
+                    return console.log("interframe_message_handler: proposal_response referenced a proposal_id " + 
                         "which does not exist.");
 
                 if (j.success)
@@ -838,6 +852,12 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             {
                 if (!in_sandbox)
                     return console.log("interframe_message_handler: received rpc_response message outside sandbox");
+                
+                if (typeof(window.rpc_response_handler) == 'undefined')
+                {
+                    console.log("sandbox_onmessage: could not find rpc handler");
+                    return false;
+                }
                 return window.rpc_response_handler(j.data);
             }
 
@@ -868,6 +888,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                             interframe_send.toString() + ";\r\n" +
                             interframe_message_handler.toString() + ";\r\n" +
                             rpc.toString() + ";\r\n" +
+                            propose.toString() + ";\r\n" +
                             "window.addEventListener('message', interframe_message_handler, false);\r\n" +
                             "window.sodium = {\r\n" +
                             "ready: false,\r\n"+
@@ -928,7 +949,10 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
 
 
        
-     
+        /**
+            This function will show the wallet with or without a proposal, or hide the wallet 
+            It is display logic but also controls the proposal flow.
+        **/ 
         function toggle_wallet(nonce, proposal, force_close)
         {
 
@@ -1035,7 +1059,8 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
             }
         }
 
-
+        // RH NOTE: This is quite confusing but proposal_id is populated from the dataset attached to the DOM
+        // element. This is to ensure 100% that the user is submitting or rejecting the correct proposal.
         function wallet_click(nonce, button, proposal_id)
         {
 
@@ -1129,7 +1154,7 @@ integrity="sha384-sIYFdg7cyHQ+74+zO6merf57B9zITFP1al25FBxrMBsvb7EKT61390Gdea4KMS
                         cleanup();
                     }).catch( e=>
                     {
-                        alert('Error submitting: ' + e);
+                        alert('Error submitting: ' + JSON.stringify(e));
                         let resolver = window.pending_proposal[proposal_id];
                         if (resolver)
                             resolver.reject(e);
